@@ -1,7 +1,4 @@
--- Enable Row Level Security
-alter table auth.users enable row level security;
-
--- Create profiles table
+-- Create profiles table (auth.users is already managed by Supabase)
 create table public.profiles (
   id uuid references auth.users(id) on delete cascade primary key,
   email text unique not null,
