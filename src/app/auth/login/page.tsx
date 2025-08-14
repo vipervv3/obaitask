@@ -25,18 +25,20 @@ export default function LoginPage() {
     setError('')
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password,
       })
 
       if (error) {
+        console.error('Auth error:', error)
         setError(error.message)
-      } else {
+      } else if (data?.user) {
         router.push('/dashboard')
       }
     } catch (err) {
-      setError('An unexpected error occurred')
+      console.error('Unexpected error:', err)
+      setError('An unexpected error occurred. Please try again.')
     } finally {
       setLoading(false)
     }

@@ -29,24 +29,26 @@ export default function SignUpPage() {
 
     try {
       const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
+        email: email.trim(),
+        password: password,
         options: {
           data: {
-            full_name: fullName,
+            full_name: fullName.trim(),
           },
         },
       })
 
       if (error) {
+        console.error('Auth error:', error)
         setError(error.message)
       } else if (data?.user && !data?.user?.email_confirmed_at) {
-        setMessage('Please check your email for a confirmation link.')
-      } else {
+        setMessage('Account created! Please check your email for a confirmation link.')
+      } else if (data?.user) {
         router.push('/dashboard')
       }
     } catch (err) {
-      setError('An unexpected error occurred')
+      console.error('Unexpected error:', err)
+      setError('An unexpected error occurred. Please try again.')
     } finally {
       setLoading(false)
     }
