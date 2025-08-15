@@ -31,6 +31,7 @@ export default function ProjectsPage() {
   const [error, setError] = useState('')
   const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [deletingProject, setDeletingProject] = useState<string | null>(null)
+  const [viewingProject, setViewingProject] = useState<Project | null>(null)
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -166,10 +167,23 @@ export default function ProjectsPage() {
 
   const handleEditProject = (project: Project) => {
     setEditingProject(project)
+    
+    // Fix due date formatting for edit form
+    let formattedDueDate = ''
+    if (project.due_date) {
+      try {
+        const date = new Date(project.due_date)
+        formattedDueDate = date.toISOString().split('T')[0]
+      } catch (error) {
+        console.error('Date parsing error:', error)
+        formattedDueDate = ''
+      }
+    }
+    
     setFormData({
       name: project.name,
       description: project.description || '',
-      due_date: project.due_date ? project.due_date.split('T')[0] : ''
+      due_date: formattedDueDate
     })
     setShowCreateForm(true)
   }
@@ -244,6 +258,10 @@ export default function ProjectsPage() {
     setEditingProject(null)
     setShowCreateForm(false)
     setFormData({ name: '', description: '', due_date: '' })
+  }
+
+  const handleViewProject = (project: Project) => {
+    setViewingProject(project)
   }
 
   const getStatusColor = (status: string) => {
@@ -395,10 +413,7 @@ export default function ProjectsPage() {
                     variant="outline" 
                     size="sm" 
                     className="flex-1"
-                    onClick={() => {
-                      // TODO: Navigate to project detail page
-                      console.log('View project:', project.id)
-                    }}
+                    onClick={() => handleViewProject(project)}
                   >
                     <Eye className="h-3 w-3 mr-1" />
                     View
@@ -446,6 +461,102 @@ export default function ProjectsPage() {
                   <Plus className="h-4 w-4 mr-2" />
                   New Project
                 </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Project View Modal */}
+        {viewingProject && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">{viewingProject.name}</h2>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-2 ${getStatusColor(viewingProject.status)}`}>
+                      {viewingProject.status}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setViewingProject(null)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="space-y-6">
+                  {viewingProject.description && (
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-2">Description</h3>
+                      <p className="text-gray-900">{viewingProject.description}</p>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="flex items-center">
+                        <CheckSquare className="h-5 w-5 text-blue-600 mr-2" />
+                        <div>
+                          <p className="text-sm text-gray-500">Tasks</p>
+                          <p className="text-lg font-semibold">{viewingProject.task_count || 0}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="flex items-center">
+                        <Users className="h-5 w-5 text-green-600 mr-2" />
+                        <div>
+                          <p className="text-sm text-gray-500">Team Members</p>
+                          <p className="text-lg font-semibold">{viewingProject.member_count || 0}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="flex items-center">
+                        <Calendar className="h-5 w-5 text-purple-600 mr-2" />
+                        <div>
+                          <p className="text-sm text-gray-500">Due Date</p>
+                          <p className="text-lg font-semibold">
+                            {viewingProject.due_date 
+                              ? new Date(viewingProject.due_date).toLocaleDateString()
+                              : 'No due date'
+                            }
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 mb-2">Project Details</h3>
+                    <div className="text-sm text-gray-600 space-y-1">
+                      <p><strong>Created:</strong> {new Date(viewingProject.created_at).toLocaleDateString()}</p>
+                      <p><strong>Project ID:</strong> {viewingProject.id}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex space-x-3 pt-4 border-t">
+                    <Button 
+                      onClick={() => {
+                        setViewingProject(null)
+                        handleEditProject(viewingProject)
+                      }}
+                    >
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit Project
+                    </Button>
+                    <Button 
+                      variant="outline"
+                      onClick={() => setViewingProject(null)}
+                    >
+                      Close
+                    </Button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
