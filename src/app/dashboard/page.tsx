@@ -42,24 +42,25 @@ export default function DashboardPage() {
         .select('*', { count: 'exact', head: true })
         .eq('created_by', user?.id)
 
-      // Fetch active tasks count
+      // Fetch active tasks count (only for user's projects)
       const { count: activeTasksCount } = await supabase
         .from('tasks')
-        .select('*', { count: 'exact', head: true })
+        .select('*, projects!inner(*)', { count: 'exact', head: true })
         .neq('status', 'completed')
-        .eq('created_by', user?.id)
+        .eq('projects.created_by', user?.id)
 
-      // Fetch completed tasks count
+      // Fetch completed tasks count (only for user's projects)
       const { count: completedTasksCount } = await supabase
         .from('tasks')
-        .select('*', { count: 'exact', head: true })
+        .select('*, projects!inner(*)', { count: 'exact', head: true })
         .eq('status', 'completed')
-        .eq('created_by', user?.id)
+        .eq('projects.created_by', user?.id)
 
-      // Fetch team members count
+      // Fetch team members count (only for user's projects)
       const { count: teamMembersCount } = await supabase
         .from('project_members')
-        .select('*', { count: 'exact', head: true })
+        .select('*, projects!inner(*)', { count: 'exact', head: true })
+        .eq('projects.created_by', user?.id)
 
       setStats({
         totalProjects: projectsCount || 0,
