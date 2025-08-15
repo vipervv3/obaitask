@@ -41,10 +41,14 @@ export default function SignUpPage() {
       if (error) {
         console.error('Auth error:', error)
         setError(error.message)
-      } else if (data?.user && !data?.user?.email_confirmed_at) {
-        setMessage('Account created! Please check your email for a confirmation link.')
       } else if (data?.user) {
-        router.push('/dashboard')
+        if (data?.user?.email_confirmed_at) {
+          // Email is already confirmed, redirect to dashboard
+          router.push('/dashboard')
+        } else {
+          // Email confirmation required
+          setMessage('Account created successfully! If email confirmation is enabled, please check your email for a confirmation link. Otherwise, you can now sign in.')
+        }
       }
     } catch (err) {
       console.error('Unexpected error:', err)
