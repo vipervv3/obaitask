@@ -160,34 +160,66 @@ export default function ProjectDetailPage() {
   }, [activeTab, user, projectId, project])
 
   const fetchProject = async () => {
+    if (!projectId || !user) {
+      setLoading(false)
+      return
+    }
+
     const supabase = createClient()
     setLoading(true)
+    setError('')
 
     try {
-      const { data, error } = await supabase
+      // First try to get the project without counts
+      const { data: projectData, error: projectError } = await supabase
         .from('projects')
-        .select(`
-          *,
-          tasks(count),
-          project_members(count)
-        `)
+        .select('*')
         .eq('id', projectId)
         .single()
 
-      if (error) throw error
+      if (projectError) {
+        console.error('Project fetch error:', projectError)
+        if (projectError.code === 'PGRST116') {
+          setError('Project not found')
+        } else {
+          setError('Failed to load project')
+        }
+        return
+      }
+
+      if (!projectData) {
+        setError('Project not found')
+        return
+      }
+
+      // Get counts separately to avoid join issues
+      const [tasksResult, membersResult] = await Promise.allSettled([
+        supabase
+          .from('tasks')
+          .select('*', { count: 'exact', head: true })
+          .eq('project_id', projectId),
+        
+        supabase
+          .from('project_members')
+          .select('*', { count: 'exact', head: true })
+          .eq('project_id', projectId)
+      ])
+
+      const taskCount = tasksResult.status === 'fulfilled' ? tasksResult.value.count || 0 : 0
+      const memberCount = membersResult.status === 'fulfilled' ? membersResult.value.count || 0 : 0
 
       const projectWithCounts = {
-        ...data,
-        task_count: data.tasks?.[0]?.count || 0,
-        member_count: data.project_members?.[0]?.count || 0
+        ...projectData,
+        task_count: taskCount,
+        member_count: memberCount
       }
 
       setProject(projectWithCounts)
       setFormData({
-        name: data.name,
-        description: data.description || '',
-        due_date: formatDateForInput(data.due_date),
-        status: data.status
+        name: projectData.name || '',
+        description: projectData.description || '',
+        due_date: formatDateForInput(projectData.due_date),
+        status: projectData.status || 'active'
       })
     } catch (error) {
       console.error('Error fetching project:', error)
@@ -198,7 +230,7 @@ export default function ProjectDetailPage() {
   }
 
   const fetchTabData = async () => {
-    if (!user || !projectId) return
+    if (!user || !projectId || !project) return
     
     setTabLoading(true)
     const supabase = createClient()
@@ -206,66 +238,115 @@ export default function ProjectDetailPage() {
     try {
       switch (activeTab) {
         case 'tasks':
-          const { data: tasksData, error: tasksError } = await supabase
-            .from('tasks')
-            .select('*')
-            .eq('project_id', projectId)
-            .order('created_at', { ascending: false })
+          try {
+            const { data: tasksData, error: tasksError } = await supabase
+              .from('tasks')
+              .select('*')
+              .eq('project_id', projectId)
+              .order('created_at', { ascending: false })
 
-          if (tasksError) throw tasksError
-          
-          // Fetch assigned user data separately if needed
-          const tasksWithUsers = await Promise.all(
-            (tasksData || []).map(async (task) => {
-              if (task.assigned_to) {
-                const { data: userData } = await supabase
-                  .from('profiles')
-                  .select('full_name, email')
-                  .eq('id', task.assigned_to)
-                  .single()
-                
-                return { ...task, assigned_user: userData }
-              }
-              return task
-            })
-          )
-          
-          setTasks(tasksWithUsers || [])
+            if (tasksError) {
+              console.error('Tasks fetch error:', tasksError)
+              setTasks([])
+              break
+            }
+            
+            // Fetch assigned user data separately if needed
+            const tasksWithUsers = await Promise.allSettled(
+              (tasksData || []).map(async (task) => {
+                if (task.assigned_to) {
+                  try {
+                    const { data: userData, error: userError } = await supabase
+                      .from('profiles')
+                      .select('full_name, email')
+                      .eq('id', task.assigned_to)
+                      .single()
+                    
+                    if (userError) {
+                      console.error('User fetch error:', userError)
+                      return task
+                    }
+                    
+                    return { ...task, assigned_user: userData }
+                  } catch (error) {
+                    console.error('Error fetching user for task:', error)
+                    return task
+                  }
+                }
+                return task
+              })
+            )
+            
+            const successfulTasks = tasksWithUsers
+              .filter(result => result.status === 'fulfilled')
+              .map(result => (result as PromiseFulfilledResult<any>).value)
+            
+            setTasks(successfulTasks)
+          } catch (error) {
+            console.error('Tasks tab error:', error)
+            setTasks([])
+          }
           break
 
         case 'members':
-          const { data: membersData, error: membersError } = await supabase
-            .from('project_members')
-            .select('*')
-            .eq('project_id', projectId)
-            .order('created_at', { ascending: false })
+          try {
+            const { data: membersData, error: membersError } = await supabase
+              .from('project_members')
+              .select('*')
+              .eq('project_id', projectId)
+              .order('created_at', { ascending: false })
 
-          if (membersError) throw membersError
-          
-          // Fetch profile data separately
-          const membersWithProfiles = await Promise.all(
-            (membersData || []).map(async (member) => {
-              const { data: profileData } = await supabase
-                .from('profiles')
-                .select('full_name, email, avatar_url')
-                .eq('id', member.user_id)
-                .single()
-              
-              return { ...member, profiles: profileData || { full_name: null, email: '', avatar_url: null } }
-            })
-          )
-          
-          setMembers(membersWithProfiles || [])
+            if (membersError) {
+              console.error('Members fetch error:', membersError)
+              setMembers([])
+              break
+            }
+            
+            // Fetch profile data separately
+            const membersWithProfiles = await Promise.allSettled(
+              (membersData || []).map(async (member) => {
+                try {
+                  const { data: profileData, error: profileError } = await supabase
+                    .from('profiles')
+                    .select('full_name, email, avatar_url')
+                    .eq('id', member.user_id)
+                    .single()
+                  
+                  if (profileError) {
+                    console.error('Profile fetch error:', profileError)
+                    return { ...member, profiles: { full_name: null, email: 'Unknown', avatar_url: null } }
+                  }
+                  
+                  return { ...member, profiles: profileData || { full_name: null, email: 'Unknown', avatar_url: null } }
+                } catch (error) {
+                  console.error('Error fetching profile for member:', error)
+                  return { ...member, profiles: { full_name: null, email: 'Unknown', avatar_url: null } }
+                }
+              })
+            )
+            
+            const successfulMembers = membersWithProfiles
+              .filter(result => result.status === 'fulfilled')
+              .map(result => (result as PromiseFulfilledResult<any>).value)
+            
+            setMembers(successfulMembers)
+          } catch (error) {
+            console.error('Members tab error:', error)
+            setMembers([])
+          }
           break
 
         case 'activity':
           // For now, create mock activity data based on recent tasks and members
-          const mockActivity: ActivityItem[] = []
-          setActivity(mockActivity)
+          setActivity([])
           break
       }
     } catch (error) {
       console.error('Error fetching tab data:', error)
+      // Reset all tab data on error
+      setTasks([])
+      setMembers([])
+      setActivity([])
     } finally {
       setTabLoading(false)
     }
