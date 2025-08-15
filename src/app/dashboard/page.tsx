@@ -56,11 +56,15 @@ export default function DashboardPage() {
         .eq('status', 'completed')
         .eq('projects.created_by', user?.id)
 
-      // Fetch team members count (only for user's projects)
-      const { count: teamMembersCount } = await supabase
+      // Fetch unique team members count (only for user's projects)
+      const { data: teamMembersData } = await supabase
         .from('project_members')
-        .select('*, projects!inner(*)', { count: 'exact', head: true })
+        .select('user_id, projects!inner(*)')
         .eq('projects.created_by', user?.id)
+
+      // Count unique users
+      const uniqueUserIds = new Set(teamMembersData?.map(member => member.user_id) || [])
+      const teamMembersCount = uniqueUserIds.size
 
       setStats({
         totalProjects: projectsCount || 0,
