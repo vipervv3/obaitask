@@ -150,7 +150,6 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     if (user && projectId) {
       fetchProject()
-      fetchTabData()
     }
   }, [user, projectId])
 
@@ -209,29 +208,54 @@ export default function ProjectDetailPage() {
         case 'tasks':
           const { data: tasksData, error: tasksError } = await supabase
             .from('tasks')
-            .select(`
-              *,
-              assigned_user:profiles!tasks_assigned_to_fkey(full_name, email)
-            `)
+            .select('*')
             .eq('project_id', projectId)
             .order('created_at', { ascending: false })
 
           if (tasksError) throw tasksError
-          setTasks(tasksData || [])
+          
+          // Fetch assigned user data separately if needed
+          const tasksWithUsers = await Promise.all(
+            (tasksData || []).map(async (task) => {
+              if (task.assigned_to) {
+                const { data: userData } = await supabase
+                  .from('profiles')
+                  .select('full_name, email')
+                  .eq('id', task.assigned_to)
+                  .single()
+                
+                return { ...task, assigned_user: userData }
+              }
+              return task
+            })
+          )
+          
+          setTasks(tasksWithUsers || [])
           break
 
         case 'members':
           const { data: membersData, error: membersError } = await supabase
             .from('project_members')
-            .select(`
-              *,
-              profiles(full_name, email, avatar_url)
-            `)
+            .select('*')
             .eq('project_id', projectId)
             .order('created_at', { ascending: false })
 
           if (membersError) throw membersError
-          setMembers(membersData || [])
+          
+          // Fetch profile data separately
+          const membersWithProfiles = await Promise.all(
+            (membersData || []).map(async (member) => {
+              const { data: profileData } = await supabase
+                .from('profiles')
+                .select('full_name, email, avatar_url')
+                .eq('id', member.user_id)
+                .single()
+              
+              return { ...member, profiles: profileData || { full_name: null, email: '', avatar_url: null } }
+            })
+          )
+          
+          setMembers(membersWithProfiles || [])
           break
 
         case 'activity':
