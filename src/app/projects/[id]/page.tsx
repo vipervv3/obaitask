@@ -190,7 +190,7 @@ export default function ProjectDetailPage() {
       <DashboardLayout>
         <div className="text-center py-12">
           <h2 className="text-2xl font-semibold text-gray-900 mb-2">Project not found</h2>
-          <p className="text-gray-600 mb-4">The project you're looking for doesn't exist or you don't have access to it.</p>
+          <p className="text-gray-600 mb-4">The project you&apos;re looking for doesn&apos;t exist or you don&apos;t have access to it.</p>
           <Button onClick={() => router.push('/projects')}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Projects
