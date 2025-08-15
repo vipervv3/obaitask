@@ -10,7 +10,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/components/auth/auth-provider'
 import { createClient } from '@/lib/supabase'
-import { Plus, FolderOpen, Calendar, Users, CheckSquare, Edit, Trash2, Eye, Clock, Target, TrendingUp } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Plus, FolderOpen, Calendar, Users, CheckSquare, Edit, Trash2, Eye } from 'lucide-react'
 
 interface Project {
   id: string
@@ -45,6 +46,7 @@ const saveDateAsUTC = (dateString: string): string => {
 }
 
 export default function ProjectsPage() {
+  const router = useRouter()
   const [projects, setProjects] = useState<Project[]>([])
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -52,7 +54,6 @@ export default function ProjectsPage() {
   const [error, setError] = useState('')
   const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [deletingProject, setDeletingProject] = useState<string | null>(null)
-  const [viewingProject, setViewingProject] = useState<Project | null>(null)
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -269,9 +270,6 @@ export default function ProjectsPage() {
     setFormData({ name: '', description: '', due_date: '' })
   }
 
-  const handleViewProject = (project: Project) => {
-    setViewingProject(project)
-  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -422,7 +420,7 @@ export default function ProjectsPage() {
                     variant="outline" 
                     size="sm" 
                     className="flex-1"
-                    onClick={() => handleViewProject(project)}
+                    onClick={() => router.push(`/projects/${project.id}`)}
                   >
                     <Eye className="h-3 w-3 mr-1" />
                     View
@@ -475,167 +473,6 @@ export default function ProjectsPage() {
           </div>
         )}
 
-        {/* Enhanced Project View Modal */}
-        {viewingProject && (
-          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-              {/* Header with gradient background */}
-              <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 rounded-t-xl">
-                <div className="flex items-start justify-between">
-                  <div className="text-white">
-                    <h2 className="text-3xl font-bold mb-2">{viewingProject.name}</h2>
-                    <div className="flex items-center space-x-3">
-                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-white bg-opacity-20 text-white`}>
-                        {viewingProject.status.charAt(0).toUpperCase() + viewingProject.status.slice(1)}
-                      </span>
-                      <div className="flex items-center text-white text-opacity-90">
-                        <Clock className="h-4 w-4 mr-1" />
-                        <span className="text-sm">Created {new Date(viewingProject.created_at).toLocaleDateString()}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setViewingProject(null)}
-                    className="text-white hover:text-gray-200 bg-white bg-opacity-20 rounded-full p-2 hover:bg-opacity-30 transition-all"
-                  >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-6">
-                {/* Description Section */}
-                {viewingProject.description && (
-                  <div className="mb-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
-                      <Target className="h-5 w-5 mr-2 text-blue-600" />
-                      Project Description
-                    </h3>
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <p className="text-gray-700 leading-relaxed">{viewingProject.description}</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border border-blue-200">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-blue-600 text-sm font-medium mb-1">Tasks</p>
-                        <p className="text-3xl font-bold text-blue-800">{viewingProject.task_count || 0}</p>
-                        <p className="text-blue-600 text-xs mt-1">Total tasks</p>
-                      </div>
-                      <CheckSquare className="h-12 w-12 text-blue-600 opacity-80" />
-                    </div>
-                  </div>
-
-                  <div className="bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-xl border border-green-200">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-green-600 text-sm font-medium mb-1">Team</p>
-                        <p className="text-3xl font-bold text-green-800">{viewingProject.member_count || 0}</p>
-                        <p className="text-green-600 text-xs mt-1">Members</p>
-                      </div>
-                      <Users className="h-12 w-12 text-green-600 opacity-80" />
-                    </div>
-                  </div>
-
-                  <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-xl border border-purple-200">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-purple-600 text-sm font-medium mb-1">Due Date</p>
-                        <p className="text-lg font-bold text-purple-800">
-                          {formatDateForDisplay(viewingProject.due_date)}
-                        </p>
-                        <p className="text-purple-600 text-xs mt-1">
-                          {viewingProject.due_date ? 
-                            new Date(viewingProject.due_date + 'T00:00:00') > new Date() ? 'Upcoming' : 'Overdue'
-                            : 'No deadline'
-                          }
-                        </p>
-                      </div>
-                      <Calendar className="h-12 w-12 text-purple-600 opacity-80" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Project Progress Section */}
-                <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
-                    <TrendingUp className="h-5 w-5 mr-2 text-green-600" />
-                    Project Progress
-                  </h3>
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-gray-600">Overall Progress</span>
-                      <span className="text-sm font-medium text-gray-900">
-                        {viewingProject.task_count ? Math.round((0 / viewingProject.task_count) * 100) : 0}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
-                        style={{ width: `${viewingProject.task_count ? Math.round((0 / viewingProject.task_count) * 100) : 0}%` }}
-                      ></div>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">
-                      0 of {viewingProject.task_count || 0} tasks completed
-                    </p>
-                  </div>
-                </div>
-
-                {/* Project Details */}
-                <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Project Information</h3>
-                  <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                    <div className="flex justify-between items-center py-2 border-b border-gray-200 last:border-b-0">
-                      <span className="text-sm font-medium text-gray-600">Project ID</span>
-                      <span className="text-sm text-gray-900 font-mono">{viewingProject.id.slice(0, 8)}...</span>
-                    </div>
-                    <div className="flex justify-between items-center py-2 border-b border-gray-200 last:border-b-0">
-                      <span className="text-sm font-medium text-gray-600">Status</span>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(viewingProject.status)}`}>
-                        {viewingProject.status.charAt(0).toUpperCase() + viewingProject.status.slice(1)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center py-2">
-                      <span className="text-sm font-medium text-gray-600">Created</span>
-                      <span className="text-sm text-gray-900">{new Date(viewingProject.created_at).toLocaleDateString('en-US', { 
-                        year: 'numeric', 
-                        month: 'long', 
-                        day: 'numeric' 
-                      })}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex space-x-3 pt-4 border-t border-gray-200">
-                  <Button 
-                    onClick={() => {
-                      setViewingProject(null)
-                      handleEditProject(viewingProject)
-                    }}
-                    className="flex-1"
-                  >
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit Project
-                  </Button>
-                  <Button 
-                    variant="outline"
-                    onClick={() => setViewingProject(null)}
-                    className="flex-1"
-                  >
-                    Close
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </DashboardLayout>
   )
