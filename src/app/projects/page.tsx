@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/components/auth/auth-provider'
 import { createClient } from '@/lib/supabase'
-import { Plus, FolderOpen, Calendar, Users, CheckSquare } from 'lucide-react'
+import { Plus, FolderOpen, Calendar, Users, CheckSquare, Edit, Trash2, Eye } from 'lucide-react'
 
 interface Project {
   id: string
@@ -29,6 +29,8 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
+  const [editingProject, setEditingProject] = useState<Project | null>(null)
+  const [deletingProject, setDeletingProject] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -162,6 +164,88 @@ export default function ProjectsPage() {
     }
   }
 
+  const handleEditProject = (project: Project) => {
+    setEditingProject(project)
+    setFormData({
+      name: project.name,
+      description: project.description || '',
+      due_date: project.due_date ? project.due_date.split('T')[0] : ''
+    })
+    setShowCreateForm(true)
+  }
+
+  const handleUpdateProject = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user || !editingProject || !formData.name.trim()) return
+
+    console.log('Updating project:', editingProject.id)
+    setCreating(true)
+    setError('')
+    const supabase = createClient()
+
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .update({
+          name: formData.name.trim(),
+          description: formData.description.trim() || null,
+          due_date: formData.due_date || null,
+        })
+        .eq('id', editingProject.id)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Project update error:', error)
+        throw error
+      }
+
+      console.log('Project updated:', data)
+      setFormData({ name: '', description: '', due_date: '' })
+      setShowCreateForm(false)
+      setEditingProject(null)
+      fetchProjects()
+    } catch (error: any) {
+      console.error('Error updating project:', error)
+      setError(error.message || 'Failed to update project')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const handleDeleteProject = async (projectId: string) => {
+    if (!user) return
+
+    setDeletingProject(projectId)
+    const supabase = createClient()
+
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', projectId)
+
+      if (error) {
+        console.error('Project delete error:', error)
+        throw error
+      }
+
+      console.log('Project deleted:', projectId)
+      fetchProjects()
+    } catch (error: any) {
+      console.error('Error deleting project:', error)
+      setError(error.message || 'Failed to delete project')
+    } finally {
+      setDeletingProject(null)
+    }
+  }
+
+  const cancelEdit = () => {
+    setEditingProject(null)
+    setShowCreateForm(false)
+    setFormData({ name: '', description: '', due_date: '' })
+  }
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active':
@@ -186,12 +270,14 @@ export default function ProjectsPage() {
           </Button>
         </div>
 
-        {/* Create Project Form */}
+        {/* Create/Edit Project Form */}
         {showCreateForm && (
           <div className="mt-8 bg-white rounded-lg border p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Create New Project</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">
+              {editingProject ? 'Edit Project' : 'Create New Project'}
+            </h3>
             
-            <form onSubmit={handleCreateProject} className="space-y-4">
+            <form onSubmit={editingProject ? handleUpdateProject : handleCreateProject} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="name">Project Name *</Label>
@@ -235,15 +321,12 @@ export default function ProjectsPage() {
 
               <div className="flex space-x-3">
                 <Button type="submit" disabled={creating || !formData.name.trim()}>
-                  {creating ? 'Creating...' : 'Create Project'}
+                  {creating ? (editingProject ? 'Updating...' : 'Creating...') : (editingProject ? 'Update Project' : 'Create Project')}
                 </Button>
                 <Button 
                   type="button" 
                   variant="outline" 
-                  onClick={() => {
-                    setShowCreateForm(false)
-                    setFormData({ name: '', description: '', due_date: '' })
-                  }}
+                  onClick={cancelEdit}
                 >
                   Cancel
                 </Button>
@@ -308,11 +391,43 @@ export default function ProjectsPage() {
                 </div>
 
                 <div className="mt-4 flex space-x-2">
-                  <Button variant="outline" size="sm" className="flex-1">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="flex-1"
+                    onClick={() => {
+                      // TODO: Navigate to project detail page
+                      console.log('View project:', project.id)
+                    }}
+                  >
+                    <Eye className="h-3 w-3 mr-1" />
                     View
                   </Button>
-                  <Button variant="outline" size="sm">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleEditProject(project)}
+                  >
+                    <Edit className="h-3 w-3 mr-1" />
                     Edit
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    onClick={() => {
+                      if (window.confirm(`Are you sure you want to delete "${project.name}"?`)) {
+                        handleDeleteProject(project.id)
+                      }
+                    }}
+                    disabled={deletingProject === project.id}
+                  >
+                    {deletingProject === project.id ? (
+                      <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent mr-1" />
+                    ) : (
+                      <Trash2 className="h-3 w-3 mr-1" />
+                    )}
+                    {deletingProject === project.id ? 'Deleting...' : 'Delete'}
                   </Button>
                 </div>
               </div>
