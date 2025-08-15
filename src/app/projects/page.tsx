@@ -28,6 +28,7 @@ export default function ProjectsPage() {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [error, setError] = useState('')
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -38,9 +39,34 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     if (user) {
+      console.log('User authenticated:', user)
+      checkUserProfile()
       fetchProjects()
     }
   }, [user])
+
+  const checkUserProfile = async () => {
+    const supabase = createClient()
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user?.id)
+      .single()
+    
+    console.log('User profile:', profile, error)
+    
+    if (!profile && !error) {
+      console.log('No profile found, creating one...')
+      const { error: createError } = await supabase
+        .from('profiles')
+        .insert({
+          id: user?.id,
+          email: user?.email,
+          full_name: user?.user_metadata?.full_name || null
+        })
+      console.log('Profile creation result:', createError)
+    }
+  }
 
   const fetchProjects = async () => {
     const supabase = createClient()
@@ -77,10 +103,20 @@ export default function ProjectsPage() {
     e.preventDefault()
     if (!user || !formData.name.trim()) return
 
+    console.log('Creating project with user:', user.id)
     setCreating(true)
+    setError('')
     const supabase = createClient()
 
     try {
+      console.log('Inserting project:', {
+        name: formData.name.trim(),
+        description: formData.description.trim() || null,
+        due_date: formData.due_date || null,
+        created_by: user.id,
+        status: 'active'
+      })
+
       const { data, error } = await supabase
         .from('projects')
         .insert({
@@ -93,10 +129,15 @@ export default function ProjectsPage() {
         .select()
         .single()
 
-      if (error) throw error
+      if (error) {
+        console.error('Project creation error:', error)
+        throw error
+      }
+
+      console.log('Project created:', data)
 
       // Add creator as project owner
-      await supabase
+      const { error: memberError } = await supabase
         .from('project_members')
         .insert({
           project_id: data.id,
@@ -104,11 +145,18 @@ export default function ProjectsPage() {
           role: 'owner'
         })
 
+      if (memberError) {
+        console.error('Project member creation error:', memberError)
+        throw memberError
+      }
+
+      console.log('Project member added successfully')
       setFormData({ name: '', description: '', due_date: '' })
       setShowCreateForm(false)
       fetchProjects()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating project:', error)
+      setError(error.message || 'Failed to create project')
     } finally {
       setCreating(false)
     }
@@ -178,6 +226,12 @@ export default function ProjectsPage() {
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
+
+              {error && (
+                <div className="text-red-600 text-sm bg-red-50 border border-red-200 rounded p-3">
+                  {error}
+                </div>
+              )}
 
               <div className="flex space-x-3">
                 <Button type="submit" disabled={creating || !formData.name.trim()}>
