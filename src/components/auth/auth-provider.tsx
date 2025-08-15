@@ -31,17 +31,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      setUser(user)
-      setLoading(false)
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser()
+        if (error) {
+          console.error('Auth error:', error)
+        }
+        setUser(user)
+      } catch (error) {
+        console.error('Failed to get user:', error)
+        setUser(null)
+      } finally {
+        setLoading(false)
+      }
     }
 
     getUser()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        setUser(session?.user ?? null)
-        setLoading(false)
+        try {
+          setUser(session?.user ?? null)
+        } catch (error) {
+          console.error('Auth state change error:', error)
+          setUser(null)
+        } finally {
+          setLoading(false)
+        }
       }
     )
 
