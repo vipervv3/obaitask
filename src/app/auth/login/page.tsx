@@ -16,6 +16,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [resendLoading, setResendLoading] = useState(false)
+  const [resendMessage, setResendMessage] = useState('')
   const router = useRouter()
   const supabase = createClient()
 
@@ -47,6 +49,35 @@ export default function LoginPage() {
       setError('An unexpected error occurred. Please try again.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleResendConfirmation = async () => {
+    if (!email.trim()) {
+      setError('Please enter your email address first.')
+      return
+    }
+
+    setResendLoading(true)
+    setError('')
+    setResendMessage('')
+
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+      })
+
+      if (error) {
+        setError(error.message)
+      } else {
+        setResendMessage('Confirmation email sent! Please check your inbox.')
+      }
+    } catch (err) {
+      console.error('Resend error:', err)
+      setError('Failed to resend confirmation email.')
+    } finally {
+      setResendLoading(false)
     }
   }
 
@@ -98,7 +129,25 @@ export default function LoginPage() {
           </div>
 
           {error && (
-            <div className="text-red-600 text-sm text-center">{error}</div>
+            <div className="text-red-600 text-sm text-center">
+              {error}
+              {error.includes('confirmation link') && (
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    onClick={handleResendConfirmation}
+                    disabled={resendLoading}
+                    className="text-blue-600 hover:text-blue-500 text-sm underline"
+                  >
+                    {resendLoading ? 'Sending...' : 'Resend confirmation email'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {resendMessage && (
+            <div className="text-green-600 text-sm text-center">{resendMessage}</div>
           )}
 
           <div>
