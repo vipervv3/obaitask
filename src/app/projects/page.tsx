@@ -59,15 +59,12 @@ const formatDateForInput = (dateString: string | null): string => {
 const formatDateForDisplay = (dateString: string | null): string => {
   if (!dateString) return 'No due date'
   try {
-    // For date-only strings (YYYY-MM-DD), parse directly without timezone conversion
-    if (!dateString.includes('T')) {
-      const [year, month, day] = dateString.split('-').map(Number)
-      const date = new Date(year, month - 1, day) // month is 0-indexed
-      return date.toLocaleDateString()
-    }
+    // Extract just the date part if it has time
+    const datePart = dateString.split('T')[0]
+    const [year, month, day] = datePart.split('-').map(Number)
     
-    // For datetime strings, parse normally
-    const date = new Date(dateString)
+    // Create date in local timezone
+    const date = new Date(year, month - 1, day)
     
     if (isNaN(date.getTime())) {
       return 'Invalid date'
@@ -82,8 +79,9 @@ const formatDateForDisplay = (dateString: string | null): string => {
 
 const saveDateAsUTC = (dateString: string): string => {
   if (!dateString) return ''
-  // Save as just the date without timezone conversion
-  return dateString
+  // Ensure we save the date in YYYY-MM-DD format with noon time to avoid timezone issues
+  // This prevents the date from shifting when saved to database
+  return `${dateString}T12:00:00`
 }
 
 export default function ProjectsPage() {

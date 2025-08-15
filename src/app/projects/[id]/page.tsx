@@ -31,20 +31,12 @@ interface Project {
 const formatDateForDisplay = (dateString: string | null): string => {
   if (!dateString) return 'No due date'
   try {
-    // For date-only strings (YYYY-MM-DD), parse directly without timezone conversion
-    if (!dateString.includes('T')) {
-      const [year, month, day] = dateString.split('-').map(Number)
-      const date = new Date(year, month - 1, day) // month is 0-indexed
-      
-      return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      })
-    }
+    // Extract just the date part if it has time
+    const datePart = dateString.split('T')[0]
+    const [year, month, day] = datePart.split('-').map(Number)
     
-    // For datetime strings, parse normally
-    const date = new Date(dateString)
+    // Create date in local timezone
+    const date = new Date(year, month - 1, day)
     
     if (isNaN(date.getTime())) {
       return 'Invalid date'
@@ -167,7 +159,7 @@ export default function ProjectDetailPage() {
         .update({
           name: formData.name.trim(),
           description: formData.description.trim() || null,
-          due_date: formData.due_date || null,
+          due_date: formData.due_date ? `${formData.due_date}T12:00:00` : null,
           status: formData.status
         })
         .eq('id', project.id)
@@ -429,7 +421,8 @@ export default function ProjectDetailPage() {
                 </p>
                 <p className="text-purple-600 text-xs mt-1">
                   {project.due_date ? (() => {
-                    const [year, month, day] = project.due_date.split('-').map(Number)
+                    const datePart = project.due_date.split('T')[0]
+                    const [year, month, day] = datePart.split('-').map(Number)
                     const dueDate = new Date(year, month - 1, day)
                     const today = new Date()
                     today.setHours(0, 0, 0, 0)
