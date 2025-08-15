@@ -144,3 +144,7 @@ The application uses the following main tables:
 ## License
 
 This project is licensed under the MIT License.
+
+---
+
+*Last updated: 2025-08-15*
