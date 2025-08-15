@@ -6,15 +6,9 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { useAuth } from '@/components/auth/auth-provider'
 import { createClient } from '@/lib/supabase'
-import { 
-  ArrowLeft, Calendar, Users, CheckSquare, Edit, Trash2, 
-  Clock, Target, TrendingUp, Plus, MoreVertical, User, AlertCircle,
-  ArrowUp, ArrowDown, UserPlus, Mail, Crown, Shield, UserX
-} from 'lucide-react'
+import { ArrowLeft, Calendar, Users, CheckSquare } from 'lucide-react'
 
 interface Project {
   id: string
@@ -24,104 +18,6 @@ interface Project {
   created_at: string
   due_date: string | null
   created_by: string
-  task_count?: number
-  member_count?: number
-}
-
-interface Task {
-  id: string
-  title: string
-  description: string | null
-  status: 'todo' | 'in_progress' | 'completed'
-  priority: 'low' | 'medium' | 'high' | 'urgent'
-  assigned_to: string | null
-  created_by: string
-  due_date: string | null
-  created_at: string
-  assigned_user?: {
-    full_name: string | null
-    email: string
-  }
-}
-
-interface ProjectMember {
-  id: string
-  user_id: string
-  role: 'owner' | 'admin' | 'member'
-  created_at: string
-  profiles: {
-    full_name: string | null
-    email: string
-    avatar_url: string | null
-  }
-}
-
-interface ActivityItem {
-  id: string
-  type: 'task_created' | 'task_completed' | 'member_added' | 'project_updated'
-  description: string
-  created_at: string
-  user: {
-    full_name: string | null
-    email: string
-  }
-}
-
-// Date utility functions
-const formatDateForDisplay = (dateString: string | null): string => {
-  if (!dateString) return 'No due date'
-  try {
-    // Extract just the date part if it has time
-    const datePart = dateString.split('T')[0]
-    const [year, month, day] = datePart.split('-').map(Number)
-    
-    // Create date in local timezone
-    const date = new Date(year, month - 1, day)
-    
-    if (isNaN(date.getTime())) {
-      return 'Invalid date'
-    }
-    
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    })
-  } catch (error) {
-    console.error('Date parsing error:', error)
-    return 'Invalid date'
-  }
-}
-
-const formatDateForInput = (dateString: string | null): string => {
-  if (!dateString) return ''
-  try {
-    // For date-only strings, return as-is (already in YYYY-MM-DD format)
-    if (!dateString.includes('T') && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-      return dateString
-    }
-    
-    // For datetime strings, extract the date part
-    if (dateString.includes('T')) {
-      return dateString.split('T')[0]
-    }
-    
-    // For other formats, try to parse and format
-    const date = new Date(dateString)
-    
-    if (isNaN(date.getTime())) {
-      return ''
-    }
-    
-    // Format as YYYY-MM-DD for input field
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
-  } catch (error) {
-    console.error('Date parsing error:', error)
-    return ''
-  }
 }
 
 export default function ProjectDetailPage() {
@@ -132,32 +28,13 @@ export default function ProjectDetailPage() {
 
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
-  const [editing, setEditing] = useState(false)
-  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
-  const [activeTab, setActiveTab] = useState<'tasks' | 'members' | 'activity'>('tasks')
-  const [tasks, setTasks] = useState<Task[]>([])
-  const [members, setMembers] = useState<ProjectMember[]>([])
-  const [activity, setActivity] = useState<ActivityItem[]>([])
-  const [tabLoading, setTabLoading] = useState(false)
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    due_date: '',
-    status: 'active' as 'active' | 'completed' | 'paused'
-  })
 
   useEffect(() => {
     if (user && projectId) {
       fetchProject()
     }
   }, [user, projectId])
-
-  useEffect(() => {
-    if (user && projectId && project) {
-      fetchTabData()
-    }
-  }, [activeTab, user, projectId, project])
 
   const fetchProject = async () => {
     if (!projectId || !user) {
@@ -170,57 +47,24 @@ export default function ProjectDetailPage() {
     setError('')
 
     try {
-      // First try to get the project without counts
-      const { data: projectData, error: projectError } = await supabase
+      const { data, error } = await supabase
         .from('projects')
         .select('*')
         .eq('id', projectId)
         .single()
 
-      if (projectError) {
-        console.error('Project fetch error:', projectError)
-        if (projectError.code === 'PGRST116') {
-          setError('Project not found')
-        } else {
-          setError('Failed to load project')
-        }
-        return
-      }
-
-      if (!projectData) {
+      if (error) {
+        console.error('Project fetch error:', error)
         setError('Project not found')
         return
       }
 
-      // Get counts separately to avoid join issues
-      const [tasksResult, membersResult] = await Promise.allSettled([
-        supabase
-          .from('tasks')
-          .select('*', { count: 'exact', head: true })
-          .eq('project_id', projectId),
-        
-        supabase
-          .from('project_members')
-          .select('*', { count: 'exact', head: true })
-          .eq('project_id', projectId)
-      ])
-
-      const taskCount = tasksResult.status === 'fulfilled' ? tasksResult.value.count || 0 : 0
-      const memberCount = membersResult.status === 'fulfilled' ? membersResult.value.count || 0 : 0
-
-      const projectWithCounts = {
-        ...projectData,
-        task_count: taskCount,
-        member_count: memberCount
+      if (!data) {
+        setError('Project not found')
+        return
       }
 
-      setProject(projectWithCounts)
-      setFormData({
-        name: projectData.name || '',
-        description: projectData.description || '',
-        due_date: formatDateForInput(projectData.due_date),
-        status: projectData.status || 'active'
-      })
+      setProject(data)
     } catch (error) {
       console.error('Error fetching project:', error)
       setError('Failed to load project')
@@ -229,274 +73,16 @@ export default function ProjectDetailPage() {
     }
   }
 
-  const fetchTabData = async () => {
-    if (!user || !projectId || !project) return
-    
-    setTabLoading(true)
-    const supabase = createClient()
-
+  const formatDateForDisplay = (dateString: string | null): string => {
+    if (!dateString) return 'No due date'
     try {
-      switch (activeTab) {
-        case 'tasks':
-          try {
-            const { data: tasksData, error: tasksError } = await supabase
-              .from('tasks')
-              .select('*')
-              .eq('project_id', projectId)
-              .order('created_at', { ascending: false })
-
-            if (tasksError) {
-              console.error('Tasks fetch error:', tasksError)
-              setTasks([])
-              break
-            }
-            
-            // Fetch assigned user data separately if needed
-            const tasksWithUsers = await Promise.allSettled(
-              (tasksData || []).map(async (task) => {
-                if (task.assigned_to) {
-                  try {
-                    const { data: userData, error: userError } = await supabase
-                      .from('profiles')
-                      .select('full_name, email')
-                      .eq('id', task.assigned_to)
-                      .single()
-                    
-                    if (userError) {
-                      console.error('User fetch error:', userError)
-                      return task
-                    }
-                    
-                    return { ...task, assigned_user: userData }
-                  } catch (error) {
-                    console.error('Error fetching user for task:', error)
-                    return task
-                  }
-                }
-                return task
-              })
-            )
-            
-            const successfulTasks = tasksWithUsers
-              .filter(result => result.status === 'fulfilled')
-              .map(result => (result as PromiseFulfilledResult<any>).value)
-            
-            setTasks(successfulTasks)
-          } catch (error) {
-            console.error('Tasks tab error:', error)
-            setTasks([])
-          }
-          break
-
-        case 'members':
-          try {
-            const { data: membersData, error: membersError } = await supabase
-              .from('project_members')
-              .select('*')
-              .eq('project_id', projectId)
-              .order('created_at', { ascending: false })
-
-            if (membersError) {
-              console.error('Members fetch error:', membersError)
-              setMembers([])
-              break
-            }
-            
-            // Fetch profile data separately
-            const membersWithProfiles = await Promise.allSettled(
-              (membersData || []).map(async (member) => {
-                try {
-                  const { data: profileData, error: profileError } = await supabase
-                    .from('profiles')
-                    .select('full_name, email, avatar_url')
-                    .eq('id', member.user_id)
-                    .single()
-                  
-                  if (profileError) {
-                    console.error('Profile fetch error:', profileError)
-                    return { ...member, profiles: { full_name: null, email: 'Unknown', avatar_url: null } }
-                  }
-                  
-                  return { ...member, profiles: profileData || { full_name: null, email: 'Unknown', avatar_url: null } }
-                } catch (error) {
-                  console.error('Error fetching profile for member:', error)
-                  return { ...member, profiles: { full_name: null, email: 'Unknown', avatar_url: null } }
-                }
-              })
-            )
-            
-            const successfulMembers = membersWithProfiles
-              .filter(result => result.status === 'fulfilled')
-              .map(result => (result as PromiseFulfilledResult<any>).value)
-            
-            setMembers(successfulMembers)
-          } catch (error) {
-            console.error('Members tab error:', error)
-            setMembers([])
-          }
-          break
-
-        case 'activity':
-          // For now, create mock activity data based on recent tasks and members
-          setActivity([])
-          break
-      }
+      const datePart = dateString.split('T')[0]
+      const [year, month, day] = datePart.split('-').map(Number)
+      const date = new Date(year, month - 1, day)
+      if (isNaN(date.getTime())) return 'Invalid date'
+      return date.toLocaleDateString()
     } catch (error) {
-      console.error('Error fetching tab data:', error)
-      // Reset all tab data on error
-      setTasks([])
-      setMembers([])
-      setActivity([])
-    } finally {
-      setTabLoading(false)
-    }
-  }
-
-  const handleTaskStatusUpdate = async (taskId: string, newStatus: Task['status']) => {
-    const supabase = createClient()
-
-    try {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ status: newStatus })
-        .eq('id', taskId)
-
-      if (error) throw error
-      
-      // Refresh tasks and project data
-      fetchTabData()
-      fetchProject()
-    } catch (error: any) {
-      console.error('Error updating task status:', error)
-      setError(error.message || 'Failed to update task status')
-    }
-  }
-
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!user || !project) return
-
-    setError('')
-    const supabase = createClient()
-
-    try {
-      const { data, error } = await supabase
-        .from('projects')
-        .update({
-          name: formData.name.trim(),
-          description: formData.description.trim() || null,
-          due_date: formData.due_date ? `${formData.due_date}T12:00:00` : null,
-          status: formData.status
-        })
-        .eq('id', project.id)
-        .select()
-        .single()
-
-      if (error) throw error
-
-      // Update the project state with the new data
-      setProject({
-        ...data,
-        task_count: project?.task_count || 0,
-        member_count: project?.member_count || 0
-      })
-      setEditing(false)
-      // Refresh the project data
-      fetchProject()
-    } catch (error: any) {
-      console.error('Error updating project:', error)
-      setError(error.message || 'Failed to update project')
-    }
-  }
-
-  const handleDelete = async () => {
-    if (!user || !project) return
-    
-    if (!window.confirm(`Are you sure you want to delete "${project.name}"? This action cannot be undone.`)) {
-      return
-    }
-
-    setDeleting(true)
-    const supabase = createClient()
-
-    try {
-      const { error } = await supabase
-        .from('projects')
-        .delete()
-        .eq('id', project.id)
-
-      if (error) throw error
-
-      router.push('/projects')
-    } catch (error: any) {
-      console.error('Error deleting project:', error)
-      setError(error.message || 'Failed to delete project')
-      setDeleting(false)
-    }
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'bg-green-100 text-green-800'
-      case 'completed':
-        return 'bg-blue-100 text-blue-800'
-      case 'paused':
-        return 'bg-yellow-100 text-yellow-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
-    }
-  }
-
-  const getTaskStatusColor = (status: string) => {
-    switch (status) {
-      case 'todo':
-        return 'bg-gray-100 text-gray-800'
-      case 'in_progress':
-        return 'bg-blue-100 text-blue-800'
-      case 'completed':
-        return 'bg-green-100 text-green-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
-    }
-  }
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'urgent':
-        return 'bg-red-100 text-red-800'
-      case 'high':
-        return 'bg-orange-100 text-orange-800'
-      case 'medium':
-        return 'bg-yellow-100 text-yellow-800'
-      case 'low':
-        return 'bg-green-100 text-green-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
-    }
-  }
-
-  const getPriorityIcon = (priority: string) => {
-    switch (priority) {
-      case 'urgent':
-        return <AlertCircle className="h-4 w-4" />
-      case 'high':
-        return <ArrowUp className="h-4 w-4" />
-      case 'low':
-        return <ArrowDown className="h-4 w-4" />
-      default:
-        return <Target className="h-4 w-4" />
-    }
-  }
-
-  const getRoleIcon = (role: string) => {
-    switch (role) {
-      case 'owner':
-        return <Crown className="h-4 w-4 text-yellow-600" />
-      case 'admin':
-        return <Shield className="h-4 w-4 text-blue-600" />
-      default:
-        return <User className="h-4 w-4 text-gray-600" />
+      return 'Invalid date'
     }
   }
 
@@ -506,22 +92,22 @@ export default function ProjectDetailPage() {
         <div className="animate-pulse">
           <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
           <div className="h-4 bg-gray-200 rounded w-1/2 mb-8"></div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-32 bg-gray-200 rounded-xl"></div>
-            ))}
-          </div>
+          <div className="h-32 bg-gray-200 rounded-xl"></div>
         </div>
       </DashboardLayout>
     )
   }
 
-  if (!project) {
+  if (error || !project) {
     return (
       <DashboardLayout>
         <div className="text-center py-12">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-2">Project not found</h2>
-          <p className="text-gray-600 mb-4">The project you&apos;re looking for doesn&apos;t exist or you don&apos;t have access to it.</p>
+          <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+            {error || 'Project not found'}
+          </h2>
+          <p className="text-gray-600 mb-4">
+            The project you&apos;re looking for doesn&apos;t exist or you don&apos;t have access to it.
+          </p>
           <Button onClick={() => router.push('/projects')}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Projects
@@ -545,134 +131,40 @@ export default function ProjectDetailPage() {
             Back to Projects
           </Button>
 
-          {!editing ? (
-            <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 rounded-xl text-white">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h1 className="text-3xl font-bold mb-2">{project.name}</h1>
-                  <div className="flex items-center space-x-3">
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-white bg-opacity-20 text-white">
-                      {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
-                    </span>
-                    <div className="flex items-center text-white text-opacity-90">
-                      <Clock className="h-4 w-4 mr-1" />
-                      <span className="text-sm">Created {formatDateForDisplay(project.created_at)}</span>
-                    </div>
+          <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 rounded-xl text-white">
+            <div className="flex items-start justify-between">
+              <div>
+                <h1 className="text-3xl font-bold mb-2">{project.name}</h1>
+                <div className="flex items-center space-x-3">
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-white bg-opacity-20 text-white">
+                    {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
+                  </span>
+                  <div className="flex items-center text-white text-opacity-90">
+                    <Calendar className="h-4 w-4 mr-1" />
+                    <span className="text-sm">Created {formatDateForDisplay(project.created_at)}</span>
                   </div>
-                </div>
-                <div className="flex space-x-2">
-                  <Button 
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setEditing(true)}
-                  >
-                    <Edit className="h-4 w-4 mr-2" />
-                    Edit
-                  </Button>
-                  <Button 
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleDelete}
-                    disabled={deleting}
-                    className="bg-red-600 hover:bg-red-700 text-white"
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    {deleting ? 'Deleting...' : 'Delete'}
-                  </Button>
                 </div>
               </div>
-              {project.description && (
-                <p className="mt-4 text-white text-opacity-90">{project.description}</p>
-              )}
             </div>
-          ) : (
-            <div className="bg-white p-6 rounded-xl border">
-              <h2 className="text-2xl font-bold mb-4">Edit Project</h2>
-              <form onSubmit={handleUpdate} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="name">Project Name *</Label>
-                    <Input
-                      id="name"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="status">Status</Label>
-                    <select
-                      id="status"
-                      value={formData.status}
-                      onChange={(e) => setFormData({ ...formData, status: e.target.value as 'active' | 'completed' | 'paused' })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="active">Active</option>
-                      <option value="paused">Paused</option>
-                      <option value="completed">Completed</option>
-                    </select>
-                  </div>
-                </div>
-                
-                <div>
-                  <Label htmlFor="due_date">Due Date</Label>
-                  <Input
-                    id="due_date"
-                    type="date"
-                    value={formData.due_date}
-                    onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="description">Description</Label>
-                  <textarea
-                    id="description"
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                {error && (
-                  <div className="text-red-600 text-sm bg-red-50 border border-red-200 rounded p-3">
-                    {error}
-                  </div>
-                )}
-
-                <div className="flex space-x-3">
-                  <Button type="submit">
-                    Save Changes
-                  </Button>
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={() => {
-                      setEditing(false)
-                      setFormData({
-                        name: project.name,
-                        description: project.description || '',
-                        due_date: formatDateForInput(project.due_date),
-                        status: project.status
-                      })
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </form>
-            </div>
-          )}
+            {project.description && (
+              <p className="mt-4 text-white text-opacity-90">{project.description}</p>
+            )}
+            {project.due_date && (
+              <div className="mt-4 flex items-center text-white text-opacity-90">
+                <Calendar className="h-4 w-4 mr-1" />
+                <span>Due {formatDateForDisplay(project.due_date)}</span>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Stats Cards */}
+        {/* Simple Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-xl border border-blue-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-blue-600 text-sm font-medium mb-1">Tasks</p>
-                <p className="text-3xl font-bold text-blue-800">{project.task_count || 0}</p>
+                <p className="text-3xl font-bold text-blue-800">--</p>
                 <p className="text-blue-600 text-xs mt-1">Total tasks</p>
               </div>
               <CheckSquare className="h-12 w-12 text-blue-600 opacity-80" />
@@ -683,7 +175,7 @@ export default function ProjectDetailPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-green-600 text-sm font-medium mb-1">Team</p>
-                <p className="text-3xl font-bold text-green-800">{project.member_count || 0}</p>
+                <p className="text-3xl font-bold text-green-800">--</p>
                 <p className="text-green-600 text-xs mt-1">Members</p>
               </div>
               <Users className="h-12 w-12 text-green-600 opacity-80" />
@@ -705,8 +197,7 @@ export default function ProjectDetailPage() {
                     const today = new Date()
                     today.setHours(0, 0, 0, 0)
                     return dueDate >= today ? 'Upcoming' : 'Overdue'
-                  })() : 'No deadline'
-                  }
+                  })() : 'No deadline'}
                 </p>
               </div>
               <Calendar className="h-12 w-12 text-purple-600 opacity-80" />
@@ -714,234 +205,29 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        {/* Tabs for Tasks, Team, etc */}
-        <div className="bg-white rounded-xl border">
-          <div className="border-b">
-            <div className="flex space-x-8 px-6">
-              <button 
-                onClick={() => setActiveTab('tasks')}
-                className={`py-4 px-2 border-b-2 font-medium ${
-                  activeTab === 'tasks' 
-                    ? 'border-blue-600 text-blue-600' 
-                    : 'border-transparent hover:border-gray-300 text-gray-600'
-                }`}
-              >
-                Tasks ({project?.task_count || 0})
-              </button>
-              <button 
-                onClick={() => setActiveTab('members')}
-                className={`py-4 px-2 border-b-2 font-medium ${
-                  activeTab === 'members' 
-                    ? 'border-blue-600 text-blue-600' 
-                    : 'border-transparent hover:border-gray-300 text-gray-600'
-                }`}
-              >
-                Team Members ({project?.member_count || 0})
-              </button>
-              <button 
-                onClick={() => setActiveTab('activity')}
-                className={`py-4 px-2 border-b-2 font-medium ${
-                  activeTab === 'activity' 
-                    ? 'border-blue-600 text-blue-600' 
-                    : 'border-transparent hover:border-gray-300 text-gray-600'
-                }`}
-              >
-                Activity
-              </button>
-            </div>
+        {/* Simple Actions */}
+        <div className="bg-white rounded-xl border p-6">
+          <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
+          <div className="flex flex-wrap gap-4">
+            <Button onClick={() => router.push('/tasks')}>
+              <CheckSquare className="h-4 w-4 mr-2" />
+              Manage Tasks
+            </Button>
+            <Button variant="outline" onClick={() => router.push('/team')}>
+              <Users className="h-4 w-4 mr-2" />
+              Team Management
+            </Button>
+            <Button variant="outline" onClick={() => router.push('/projects')}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Projects
+            </Button>
           </div>
-
-          <div className="p-6">
-            {/* Tab Content */}
-            {activeTab === 'tasks' && (
-              <div>
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Project Tasks</h3>
-                  <Button size="sm" onClick={() => router.push('/tasks')}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Manage Tasks
-                  </Button>
-                </div>
-
-                {tabLoading ? (
-                  <div className="space-y-4">
-                    {[...Array(3)].map((_, i) => (
-                      <div key={i} className="bg-gray-50 rounded-lg p-4 animate-pulse">
-                        <div className="h-4 bg-gray-300 rounded mb-2 w-3/4"></div>
-                        <div className="h-3 bg-gray-200 rounded mb-2 w-1/2"></div>
-                      </div>
-                    ))}
-                  </div>
-                ) : tasks.length > 0 ? (
-                  <div className="space-y-4">
-                    {tasks.map((task) => (
-                      <div key={task.id} className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-3 mb-2">
-                              <h4 className="font-medium text-gray-900">{task.title}</h4>
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getTaskStatusColor(task.status)}`}>
-                                {task.status.replace('_', ' ')}
-                              </span>
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(task.priority)}`}>
-                                {getPriorityIcon(task.priority)}
-                                <span className="ml-1">{task.priority}</span>
-                              </span>
-                            </div>
-                            
-                            {task.description && (
-                              <p className="text-sm text-gray-600 mb-2">{task.description}</p>
-                            )}
-
-                            <div className="flex items-center space-x-4 text-sm text-gray-500">
-                              {task.assigned_user ? (
-                                <div className="flex items-center">
-                                  <User className="h-4 w-4 mr-1" />
-                                  <span>{task.assigned_user.full_name || task.assigned_user.email}</span>
-                                </div>
-                              ) : (
-                                <span className="text-gray-400">Unassigned</span>
-                              )}
-                              
-                              {task.due_date && (
-                                <div className="flex items-center">
-                                  <Calendar className="h-4 w-4 mr-1" />
-                                  <span>Due {formatDateForDisplay(task.due_date)}</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="flex space-x-2 ml-4">
-                            {task.status === 'todo' && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleTaskStatusUpdate(task.id, 'in_progress')}
-                                className="text-blue-600 hover:text-blue-700"
-                              >
-                                Start
-                              </Button>
-                            )}
-                            {task.status === 'in_progress' && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleTaskStatusUpdate(task.id, 'completed')}
-                                className="text-green-600 hover:text-green-700"
-                              >
-                                Complete
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-gray-500">
-                    <CheckSquare className="h-12 w-12 mx-auto mb-3 text-gray-400" />
-                    <p className="text-lg font-medium mb-1">No tasks yet</p>
-                    <p className="text-sm">Create tasks for this project to track progress</p>
-                    <div className="mt-4">
-                      <Button variant="outline" onClick={() => router.push('/tasks')}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Create First Task
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'members' && (
-              <div>
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Team Members</h3>
-                  <Button size="sm">
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Invite Member
-                  </Button>
-                </div>
-
-                {tabLoading ? (
-                  <div className="space-y-4">
-                    {[...Array(3)].map((_, i) => (
-                      <div key={i} className="bg-gray-50 rounded-lg p-4 animate-pulse">
-                        <div className="flex items-center space-x-3">
-                          <div className="h-10 w-10 bg-gray-300 rounded-full"></div>
-                          <div className="flex-1">
-                            <div className="h-4 bg-gray-300 rounded mb-1 w-1/3"></div>
-                            <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : members.length > 0 ? (
-                  <div className="space-y-4">
-                    {members.map((member) => (
-                      <div key={member.id} className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-3">
-                            <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                              <User className="h-5 w-5 text-blue-600" />
-                            </div>
-                            <div>
-                              <div className="flex items-center space-x-2">
-                                <h4 className="font-medium text-gray-900">
-                                  {member.profiles.full_name || member.profiles.email}
-                                </h4>
-                                {getRoleIcon(member.role)}
-                                <span className="text-sm text-gray-500 capitalize">{member.role}</span>
-                              </div>
-                              <p className="text-sm text-gray-500">{member.profiles.email}</p>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center space-x-2">
-                            <span className="text-xs text-gray-400">
-                              Joined {new Date(member.created_at).toLocaleDateString()}
-                            </span>
-                            {member.role !== 'owner' && (
-                              <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700">
-                                <UserX className="h-3 w-3" />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-gray-500">
-                    <Users className="h-12 w-12 mx-auto mb-3 text-gray-400" />
-                    <p className="text-lg font-medium mb-1">No team members</p>
-                    <p className="text-sm">Invite team members to collaborate on this project</p>
-                    <div className="mt-4">
-                      <Button variant="outline">
-                        <Mail className="h-4 w-4 mr-2" />
-                        Send Invitation
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'activity' && (
-              <div>
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Recent Activity</h3>
-                </div>
-
-                <div className="text-center py-12 text-gray-500">
-                  <Clock className="h-12 w-12 mx-auto mb-3 text-gray-400" />
-                  <p className="text-lg font-medium mb-1">No recent activity</p>
-                  <p className="text-sm">Project activity will appear here as tasks are created and completed</p>
-                </div>
-              </div>
-            )}
+          
+          <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <p className="text-yellow-800 text-sm">
+              <strong>Note:</strong> This is a simplified view. Full project details and tabs are temporarily disabled 
+              while we resolve server issues. You can still manage tasks and team members from their respective pages.
+            </p>
           </div>
         </div>
       </div>
