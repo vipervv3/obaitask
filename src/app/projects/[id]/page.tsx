@@ -1,5 +1,7 @@
 'use client'
 
+export const dynamic = 'force-dynamic'
+
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
@@ -28,14 +30,48 @@ interface Project {
 // Date utility functions
 const formatDateForDisplay = (dateString: string | null): string => {
   if (!dateString) return 'No due date'
-  const date = new Date(dateString + 'T00:00:00')
-  return date.toLocaleDateString()
+  try {
+    // Handle both date-only and datetime strings
+    const date = dateString.includes('T') 
+      ? new Date(dateString)
+      : new Date(dateString + 'T00:00:00')
+    
+    if (isNaN(date.getTime())) {
+      return 'Invalid date'
+    }
+    
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })
+  } catch (error) {
+    console.error('Date parsing error:', error)
+    return 'Invalid date'
+  }
 }
 
 const formatDateForInput = (dateString: string | null): string => {
   if (!dateString) return ''
-  const date = new Date(dateString + 'T00:00:00')
-  return date.toISOString().split('T')[0]
+  try {
+    // Handle both date-only and datetime strings
+    const date = dateString.includes('T')
+      ? new Date(dateString)
+      : new Date(dateString + 'T00:00:00')
+    
+    if (isNaN(date.getTime())) {
+      return ''
+    }
+    
+    // Format as YYYY-MM-DD for input field
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  } catch (error) {
+    console.error('Date parsing error:', error)
+    return ''
+  }
 }
 
 export default function ProjectDetailPage() {
@@ -122,8 +158,15 @@ export default function ProjectDetailPage() {
 
       if (error) throw error
 
-      setProject(data)
+      // Update the project state with the new data
+      setProject({
+        ...data,
+        task_count: project?.task_count || 0,
+        member_count: project?.member_count || 0
+      })
       setEditing(false)
+      // Refresh the project data
+      fetchProject()
     } catch (error: any) {
       console.error('Error updating project:', error)
       setError(error.message || 'Failed to update project')
