@@ -33,47 +33,100 @@ export default function DashboardPage() {
   }, [user])
 
   const fetchDashboardStats = async () => {
+    if (!user?.id) {
+      setLoading(false)
+      return
+    }
+
     const supabase = createClient()
     
     try {
       // Fetch projects count
-      const { count: projectsCount } = await supabase
+      const { count: projectsCount, error: projectsError } = await supabase
         .from('projects')
         .select('*', { count: 'exact', head: true })
-        .eq('created_by', user?.id)
+        .eq('created_by', user.id)
 
-      // Fetch active tasks count (only for user's projects)
-      const { count: activeTasksCount } = await supabase
-        .from('tasks')
-        .select('*, projects!inner(*)', { count: 'exact', head: true })
-        .neq('status', 'completed')
-        .eq('projects.created_by', user?.id)
+      if (projectsError) {
+        console.error('Error fetching projects count:', projectsError)
+      }
 
-      // Fetch completed tasks count (only for user's projects)
-      const { count: completedTasksCount } = await supabase
-        .from('tasks')
-        .select('*, projects!inner(*)', { count: 'exact', head: true })
-        .eq('status', 'completed')
-        .eq('projects.created_by', user?.id)
+      // If no projects, set zero stats
+      if (!projectsCount || projectsCount === 0) {
+        setStats({
+          totalProjects: 0,
+          activeTasks: 0,
+          completedTasks: 0,
+          teamMembers: 0
+        })
+        return
+      }
 
-      // Fetch unique team members count (only for user's projects)
-      const { data: teamMembersData } = await supabase
-        .from('project_members')
-        .select('user_id, projects!inner(*)')
-        .eq('projects.created_by', user?.id)
+      // Get user's project IDs
+      const { data: userProjects, error: userProjectsError } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('created_by', user.id)
+
+      if (userProjectsError) {
+        console.error('Error fetching user projects:', userProjectsError)
+      }
+
+      const projectIds = userProjects?.map(p => p.id) || []
+
+      if (projectIds.length === 0) {
+        setStats({
+          totalProjects: projectsCount || 0,
+          activeTasks: 0,
+          completedTasks: 0,
+          teamMembers: 0
+        })
+        return
+      }
+
+      // Fetch task counts in parallel
+      const [activeTasksResult, completedTasksResult, teamMembersResult] = await Promise.allSettled([
+        supabase
+          .from('tasks')
+          .select('*', { count: 'exact', head: true })
+          .neq('status', 'completed')
+          .in('project_id', projectIds),
+        
+        supabase
+          .from('tasks')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'completed')
+          .in('project_id', projectIds),
+        
+        supabase
+          .from('project_members')
+          .select('user_id')
+          .in('project_id', projectIds)
+      ])
+
+      const activeTasksCount = activeTasksResult.status === 'fulfilled' ? activeTasksResult.value.count || 0 : 0
+      const completedTasksCount = completedTasksResult.status === 'fulfilled' ? completedTasksResult.value.count || 0 : 0
+      const teamMembersData = teamMembersResult.status === 'fulfilled' ? teamMembersResult.value.data || [] : []
 
       // Count unique users
-      const uniqueUserIds = new Set(teamMembersData?.map(member => member.user_id) || [])
+      const uniqueUserIds = new Set(teamMembersData.map(member => member.user_id))
       const teamMembersCount = uniqueUserIds.size
 
       setStats({
         totalProjects: projectsCount || 0,
-        activeTasks: activeTasksCount || 0,
-        completedTasks: completedTasksCount || 0,
-        teamMembers: teamMembersCount || 0
+        activeTasks: activeTasksCount,
+        completedTasks: completedTasksCount,
+        teamMembers: teamMembersCount
       })
     } catch (error) {
       console.error('Error fetching dashboard stats:', error)
+      // Set safe fallback stats
+      setStats({
+        totalProjects: 0,
+        activeTasks: 0,
+        completedTasks: 0,
+        teamMembers: 0
+      })
     } finally {
       setLoading(false)
     }
