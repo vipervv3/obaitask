@@ -53,7 +53,7 @@ export default function ProjectDetailPage() {
     name: '',
     description: '',
     due_date: '',
-    status: 'active' as const
+    status: 'active' as 'active' | 'completed' | 'paused'
   })
 
   useEffect(() => {
@@ -273,7 +273,7 @@ export default function ProjectDetailPage() {
                     <select
                       id="status"
                       value={formData.status}
-                      onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+                      onChange={(e) => setFormData({ ...formData, status: e.target.value as 'active' | 'completed' | 'paused' })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="active">Active</option>
