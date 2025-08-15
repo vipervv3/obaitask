@@ -31,10 +31,20 @@ interface Project {
 const formatDateForDisplay = (dateString: string | null): string => {
   if (!dateString) return 'No due date'
   try {
-    // Handle both date-only and datetime strings
-    const date = dateString.includes('T') 
-      ? new Date(dateString)
-      : new Date(dateString + 'T00:00:00')
+    // For date-only strings (YYYY-MM-DD), parse directly without timezone conversion
+    if (!dateString.includes('T')) {
+      const [year, month, day] = dateString.split('-').map(Number)
+      const date = new Date(year, month - 1, day) // month is 0-indexed
+      
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      })
+    }
+    
+    // For datetime strings, parse normally
+    const date = new Date(dateString)
     
     if (isNaN(date.getTime())) {
       return 'Invalid date'
@@ -54,10 +64,18 @@ const formatDateForDisplay = (dateString: string | null): string => {
 const formatDateForInput = (dateString: string | null): string => {
   if (!dateString) return ''
   try {
-    // Handle both date-only and datetime strings
-    const date = dateString.includes('T')
-      ? new Date(dateString)
-      : new Date(dateString + 'T00:00:00')
+    // For date-only strings, return as-is (already in YYYY-MM-DD format)
+    if (!dateString.includes('T') && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      return dateString
+    }
+    
+    // For datetime strings, extract the date part
+    if (dateString.includes('T')) {
+      return dateString.split('T')[0]
+    }
+    
+    // For other formats, try to parse and format
+    const date = new Date(dateString)
     
     if (isNaN(date.getTime())) {
       return ''
@@ -410,9 +428,13 @@ export default function ProjectDetailPage() {
                   {formatDateForDisplay(project.due_date)}
                 </p>
                 <p className="text-purple-600 text-xs mt-1">
-                  {project.due_date ? 
-                    new Date(project.due_date + 'T00:00:00') > new Date() ? 'Upcoming' : 'Overdue'
-                    : 'No deadline'
+                  {project.due_date ? (() => {
+                    const [year, month, day] = project.due_date.split('-').map(Number)
+                    const dueDate = new Date(year, month - 1, day)
+                    const today = new Date()
+                    today.setHours(0, 0, 0, 0)
+                    return dueDate >= today ? 'Upcoming' : 'Overdue'
+                  })() : 'No deadline'
                   }
                 </p>
               </div>
