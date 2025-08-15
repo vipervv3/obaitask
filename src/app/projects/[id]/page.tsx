@@ -12,7 +12,8 @@ import { useAuth } from '@/components/auth/auth-provider'
 import { createClient } from '@/lib/supabase'
 import { 
   ArrowLeft, Calendar, Users, CheckSquare, Edit, Trash2, 
-  Clock, Target, TrendingUp, Plus, MoreVertical 
+  Clock, Target, TrendingUp, Plus, MoreVertical, User, AlertCircle,
+  ArrowUp, ArrowDown, UserPlus, Mail, Crown, Shield, UserX
 } from 'lucide-react'
 
 interface Project {
@@ -25,6 +26,45 @@ interface Project {
   created_by: string
   task_count?: number
   member_count?: number
+}
+
+interface Task {
+  id: string
+  title: string
+  description: string | null
+  status: 'todo' | 'in_progress' | 'completed'
+  priority: 'low' | 'medium' | 'high' | 'urgent'
+  assigned_to: string | null
+  created_by: string
+  due_date: string | null
+  created_at: string
+  assigned_user?: {
+    full_name: string | null
+    email: string
+  }
+}
+
+interface ProjectMember {
+  id: string
+  user_id: string
+  role: 'owner' | 'admin' | 'member'
+  created_at: string
+  profiles: {
+    full_name: string | null
+    email: string
+    avatar_url: string | null
+  }
+}
+
+interface ActivityItem {
+  id: string
+  type: 'task_created' | 'task_completed' | 'member_added' | 'project_updated'
+  description: string
+  created_at: string
+  user: {
+    full_name: string | null
+    email: string
+  }
 }
 
 // Date utility functions
@@ -95,6 +135,11 @@ export default function ProjectDetailPage() {
   const [editing, setEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
+  const [activeTab, setActiveTab] = useState<'tasks' | 'members' | 'activity'>('tasks')
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [members, setMembers] = useState<ProjectMember[]>([])
+  const [activity, setActivity] = useState<ActivityItem[]>([])
+  const [tabLoading, setTabLoading] = useState(false)
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -105,8 +150,15 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     if (user && projectId) {
       fetchProject()
+      fetchTabData()
     }
   }, [user, projectId])
+
+  useEffect(() => {
+    if (user && projectId && project) {
+      fetchTabData()
+    }
+  }, [activeTab, user, projectId, project])
 
   const fetchProject = async () => {
     const supabase = createClient()
@@ -143,6 +195,75 @@ export default function ProjectDetailPage() {
       setError('Failed to load project')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchTabData = async () => {
+    if (!user || !projectId) return
+    
+    setTabLoading(true)
+    const supabase = createClient()
+
+    try {
+      switch (activeTab) {
+        case 'tasks':
+          const { data: tasksData, error: tasksError } = await supabase
+            .from('tasks')
+            .select(`
+              *,
+              assigned_user:profiles!tasks_assigned_to_fkey(full_name, email)
+            `)
+            .eq('project_id', projectId)
+            .order('created_at', { ascending: false })
+
+          if (tasksError) throw tasksError
+          setTasks(tasksData || [])
+          break
+
+        case 'members':
+          const { data: membersData, error: membersError } = await supabase
+            .from('project_members')
+            .select(`
+              *,
+              profiles(full_name, email, avatar_url)
+            `)
+            .eq('project_id', projectId)
+            .order('created_at', { ascending: false })
+
+          if (membersError) throw membersError
+          setMembers(membersData || [])
+          break
+
+        case 'activity':
+          // For now, create mock activity data based on recent tasks and members
+          const mockActivity: ActivityItem[] = []
+          setActivity(mockActivity)
+          break
+      }
+    } catch (error) {
+      console.error('Error fetching tab data:', error)
+    } finally {
+      setTabLoading(false)
+    }
+  }
+
+  const handleTaskStatusUpdate = async (taskId: string, newStatus: Task['status']) => {
+    const supabase = createClient()
+
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ status: newStatus })
+        .eq('id', taskId)
+
+      if (error) throw error
+      
+      // Refresh tasks and project data
+      fetchTabData()
+      fetchProject()
+    } catch (error: any) {
+      console.error('Error updating task status:', error)
+      setError(error.message || 'Failed to update task status')
     }
   }
 
@@ -219,6 +340,58 @@ export default function ProjectDetailPage() {
         return 'bg-yellow-100 text-yellow-800'
       default:
         return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  const getTaskStatusColor = (status: string) => {
+    switch (status) {
+      case 'todo':
+        return 'bg-gray-100 text-gray-800'
+      case 'in_progress':
+        return 'bg-blue-100 text-blue-800'
+      case 'completed':
+        return 'bg-green-100 text-green-800'
+      default:
+        return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'urgent':
+        return 'bg-red-100 text-red-800'
+      case 'high':
+        return 'bg-orange-100 text-orange-800'
+      case 'medium':
+        return 'bg-yellow-100 text-yellow-800'
+      case 'low':
+        return 'bg-green-100 text-green-800'
+      default:
+        return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  const getPriorityIcon = (priority: string) => {
+    switch (priority) {
+      case 'urgent':
+        return <AlertCircle className="h-4 w-4" />
+      case 'high':
+        return <ArrowUp className="h-4 w-4" />
+      case 'low':
+        return <ArrowDown className="h-4 w-4" />
+      default:
+        return <Target className="h-4 w-4" />
+    }
+  }
+
+  const getRoleIcon = (role: string) => {
+    switch (role) {
+      case 'owner':
+        return <Crown className="h-4 w-4 text-yellow-600" />
+      case 'admin':
+        return <Shield className="h-4 w-4 text-blue-600" />
+      default:
+        return <User className="h-4 w-4 text-gray-600" />
     }
   }
 
@@ -440,37 +613,230 @@ export default function ProjectDetailPage() {
         <div className="bg-white rounded-xl border">
           <div className="border-b">
             <div className="flex space-x-8 px-6">
-              <button className="py-4 px-2 border-b-2 border-blue-600 text-blue-600 font-medium">
-                Tasks
+              <button 
+                onClick={() => setActiveTab('tasks')}
+                className={`py-4 px-2 border-b-2 font-medium ${
+                  activeTab === 'tasks' 
+                    ? 'border-blue-600 text-blue-600' 
+                    : 'border-transparent hover:border-gray-300 text-gray-600'
+                }`}
+              >
+                Tasks ({project?.task_count || 0})
               </button>
-              <button className="py-4 px-2 border-b-2 border-transparent hover:border-gray-300 text-gray-600 font-medium">
-                Team Members
+              <button 
+                onClick={() => setActiveTab('members')}
+                className={`py-4 px-2 border-b-2 font-medium ${
+                  activeTab === 'members' 
+                    ? 'border-blue-600 text-blue-600' 
+                    : 'border-transparent hover:border-gray-300 text-gray-600'
+                }`}
+              >
+                Team Members ({project?.member_count || 0})
               </button>
-              <button className="py-4 px-2 border-b-2 border-transparent hover:border-gray-300 text-gray-600 font-medium">
+              <button 
+                onClick={() => setActiveTab('activity')}
+                className={`py-4 px-2 border-b-2 font-medium ${
+                  activeTab === 'activity' 
+                    ? 'border-blue-600 text-blue-600' 
+                    : 'border-transparent hover:border-gray-300 text-gray-600'
+                }`}
+              >
                 Activity
               </button>
             </div>
           </div>
 
           <div className="p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Project Tasks</h3>
-              <Button size="sm" onClick={() => router.push('/tasks')}>
-                <Plus className="h-4 w-4 mr-2" />
-                Manage Tasks
-              </Button>
-            </div>
+            {/* Tab Content */}
+            {activeTab === 'tasks' && (
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold">Project Tasks</h3>
+                  <Button size="sm" onClick={() => router.push('/tasks')}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Manage Tasks
+                  </Button>
+                </div>
 
-            <div className="text-center py-12 text-gray-500">
-              <CheckSquare className="h-12 w-12 mx-auto mb-3 text-gray-400" />
-              <p className="text-lg font-medium mb-1">Task management available</p>
-              <p className="text-sm">Go to the Tasks page to create and manage tasks for this project</p>
-              <div className="mt-4">
-                <Button variant="outline" onClick={() => router.push('/tasks')}>
-                  Go to Tasks
-                </Button>
+                {tabLoading ? (
+                  <div className="space-y-4">
+                    {[...Array(3)].map((_, i) => (
+                      <div key={i} className="bg-gray-50 rounded-lg p-4 animate-pulse">
+                        <div className="h-4 bg-gray-300 rounded mb-2 w-3/4"></div>
+                        <div className="h-3 bg-gray-200 rounded mb-2 w-1/2"></div>
+                      </div>
+                    ))}
+                  </div>
+                ) : tasks.length > 0 ? (
+                  <div className="space-y-4">
+                    {tasks.map((task) => (
+                      <div key={task.id} className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-3 mb-2">
+                              <h4 className="font-medium text-gray-900">{task.title}</h4>
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getTaskStatusColor(task.status)}`}>
+                                {task.status.replace('_', ' ')}
+                              </span>
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(task.priority)}`}>
+                                {getPriorityIcon(task.priority)}
+                                <span className="ml-1">{task.priority}</span>
+                              </span>
+                            </div>
+                            
+                            {task.description && (
+                              <p className="text-sm text-gray-600 mb-2">{task.description}</p>
+                            )}
+
+                            <div className="flex items-center space-x-4 text-sm text-gray-500">
+                              {task.assigned_user ? (
+                                <div className="flex items-center">
+                                  <User className="h-4 w-4 mr-1" />
+                                  <span>{task.assigned_user.full_name || task.assigned_user.email}</span>
+                                </div>
+                              ) : (
+                                <span className="text-gray-400">Unassigned</span>
+                              )}
+                              
+                              {task.due_date && (
+                                <div className="flex items-center">
+                                  <Calendar className="h-4 w-4 mr-1" />
+                                  <span>Due {formatDateForDisplay(task.due_date)}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex space-x-2 ml-4">
+                            {task.status === 'todo' && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleTaskStatusUpdate(task.id, 'in_progress')}
+                                className="text-blue-600 hover:text-blue-700"
+                              >
+                                Start
+                              </Button>
+                            )}
+                            {task.status === 'in_progress' && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleTaskStatusUpdate(task.id, 'completed')}
+                                className="text-green-600 hover:text-green-700"
+                              >
+                                Complete
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    <CheckSquare className="h-12 w-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-lg font-medium mb-1">No tasks yet</p>
+                    <p className="text-sm">Create tasks for this project to track progress</p>
+                    <div className="mt-4">
+                      <Button variant="outline" onClick={() => router.push('/tasks')}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Create First Task
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
+            )}
+
+            {activeTab === 'members' && (
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold">Team Members</h3>
+                  <Button size="sm">
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Invite Member
+                  </Button>
+                </div>
+
+                {tabLoading ? (
+                  <div className="space-y-4">
+                    {[...Array(3)].map((_, i) => (
+                      <div key={i} className="bg-gray-50 rounded-lg p-4 animate-pulse">
+                        <div className="flex items-center space-x-3">
+                          <div className="h-10 w-10 bg-gray-300 rounded-full"></div>
+                          <div className="flex-1">
+                            <div className="h-4 bg-gray-300 rounded mb-1 w-1/3"></div>
+                            <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : members.length > 0 ? (
+                  <div className="space-y-4">
+                    {members.map((member) => (
+                      <div key={member.id} className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
+                              <User className="h-5 w-5 text-blue-600" />
+                            </div>
+                            <div>
+                              <div className="flex items-center space-x-2">
+                                <h4 className="font-medium text-gray-900">
+                                  {member.profiles.full_name || member.profiles.email}
+                                </h4>
+                                {getRoleIcon(member.role)}
+                                <span className="text-sm text-gray-500 capitalize">{member.role}</span>
+                              </div>
+                              <p className="text-sm text-gray-500">{member.profiles.email}</p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs text-gray-400">
+                              Joined {new Date(member.created_at).toLocaleDateString()}
+                            </span>
+                            {member.role !== 'owner' && (
+                              <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700">
+                                <UserX className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    <Users className="h-12 w-12 mx-auto mb-3 text-gray-400" />
+                    <p className="text-lg font-medium mb-1">No team members</p>
+                    <p className="text-sm">Invite team members to collaborate on this project</p>
+                    <div className="mt-4">
+                      <Button variant="outline">
+                        <Mail className="h-4 w-4 mr-2" />
+                        Send Invitation
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'activity' && (
+              <div>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold">Recent Activity</h3>
+                </div>
+
+                <div className="text-center py-12 text-gray-500">
+                  <Clock className="h-12 w-12 mx-auto mb-3 text-gray-400" />
+                  <p className="text-lg font-medium mb-1">No recent activity</p>
+                  <p className="text-sm">Project activity will appear here as tasks are created and completed</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
