@@ -64,7 +64,8 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 1. Create a new Supabase project at [supabase.com](https://supabase.com)
 2. Run the SQL schema from `supabase/schema.sql` in your Supabase SQL editor
-3. Update your environment variables with your Supabase credentials
+3. Configure Supabase auth settings following `SUPABASE_CONFIG.md`
+4. Update your environment variables with your Supabase credentials
 
 ### 5. Run the Development Server
 
@@ -108,8 +109,12 @@ The application uses the following main tables:
 
 1. Push your code to GitHub
 2. Connect your repository to Vercel
-3. Add your environment variables in Vercel dashboard
+3. Add your environment variables in Vercel dashboard:
+   - All Supabase keys
+   - AI service API keys  
+   - `NEXT_PUBLIC_APP_URL=https://your-domain.vercel.app`
 4. Deploy!
+5. Update Supabase auth settings with your production domain (see `SUPABASE_CONFIG.md`)
 
 ## Core Features Implementation
 
