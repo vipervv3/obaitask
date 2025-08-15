@@ -455,16 +455,21 @@ export default function ProjectDetailPage() {
           <div className="p-6">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold">Project Tasks</h3>
-              <Button size="sm">
+              <Button size="sm" onClick={() => router.push('/tasks')}>
                 <Plus className="h-4 w-4 mr-2" />
-                Add Task
+                Manage Tasks
               </Button>
             </div>
 
             <div className="text-center py-12 text-gray-500">
               <CheckSquare className="h-12 w-12 mx-auto mb-3 text-gray-400" />
-              <p className="text-lg font-medium mb-1">No tasks yet</p>
-              <p className="text-sm">Create your first task to get started</p>
+              <p className="text-lg font-medium mb-1">Task management available</p>
+              <p className="text-sm">Go to the Tasks page to create and manage tasks for this project</p>
+              <div className="mt-4">
+                <Button variant="outline" onClick={() => router.push('/tasks')}>
+                  Go to Tasks
+                </Button>
+              </div>
             </div>
           </div>
         </div>
